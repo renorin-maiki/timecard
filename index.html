@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0C6B66">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="タイムカード">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); }
+body { margin: 0; font: 14px/1.5 system-ui, sans-serif; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+</style>
+<title>タイムカード</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@400;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/* Layout: one-column phone app — a timecard "punch" screen, a monthly card, settings; fixed tab bar at the bottom */
+:root {
+  --bg: #EDF0F2;
+  --card: #FFFFFF;
+  --ink: #17212B;
+  --muted: #5B6875;
+  --line: #D4DBE1;
+  --punch: #0C6B66;
+  --punch-ink: #FFFFFF;
+  --punch-soft: #DCEEEC;
+  --break: #A86A12;
+  --break-soft: #F6EAD6;
+  --off: #B23F35;
+  --off-soft: #F6E0DD;
+  --f-body: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+  --f-num: "Martian Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1317; --card: #172027; --ink: #E5EBEF; --muted: #93A0AB; --line: #27333C;
+    --punch: #3DB5AA; --punch-ink: #06201E; --punch-soft: #15302E;
+    --break: #E2A54B; --break-soft: #33281A; --off: #E9796E; --off-soft: #3A2220;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1317; --card: #172027; --ink: #E5EBEF; --muted: #93A0AB; --line: #27333C;
+  --punch: #3DB5AA; --punch-ink: #06201E; --punch-soft: #15302E;
+  --break: #E2A54B; --break-soft: #33281A; --off: #E9796E; --off-soft: #3A2220;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--f-body); font-size: 15px; line-height: 1.6;
+  -webkit-tap-highlight-color: transparent;
+}
+.num { font-family: var(--f-num); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+main {
+  max-width: 520px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px calc(96px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; gap: 16px;
+}
+h1, h2 { margin: 0; text-wrap: balance; }
+h2 { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--punch); outline-offset: 2px; }
+
+.card { background: var(--card); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.topline { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.date { font-size: 15px; font-weight: 500; color: var(--muted); }
+.mode { font-size: 12px; color: var(--muted); }
+
+/* Punch screen */
+.clockface { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding-block: 8px; }
+.clock { font-size: clamp(56px, 19vw, 84px); font-weight: 600; line-height: 1; }
+.clock .sec { font-size: 0.34em; color: var(--muted); font-weight: 400; margin-left: 6px; }
+.status { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; padding: 4px 12px 4px 10px; border-radius: 999px; }
+.status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.st-before { background: var(--line); color: var(--muted); }
+.st-work { background: var(--punch-soft); color: var(--punch); }
+.st-break { background: var(--break-soft); color: var(--break); }
+.st-done { background: var(--off-soft); color: var(--off); }
+.st-work::before { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+
+.actions { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.actions.two { grid-template-columns: 1fr 1fr; }
+.btn-punch {
+  border: 0; border-radius: 14px; min-height: 76px; padding: 12px;
+  font-size: 20px; font-weight: 700; letter-spacing: 0.1em;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  transition: transform .08s ease;
+}
+.btn-punch small { font-size: 11px; font-weight: 500; letter-spacing: 0.04em; opacity: .85; }
+.btn-punch:active { transform: scale(.97); }
+.btn-in { background: var(--punch); color: var(--punch-ink); }
+.btn-out { background: var(--off); color: var(--card); }
+.btn-break { background: var(--break-soft); color: var(--break); }
+.btn-ghost { background: transparent; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 14px; color: var(--muted); }
+.btn-ghost:active { background: var(--line); }
+
+.brkpick { display: flex; flex-direction: column; gap: 8px; }
+.brkpick .k { font-size: 12px; color: var(--muted); letter-spacing: 0.06em; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 1.5px solid var(--line); background: var(--card); border-radius: 999px; padding: 7px 14px; font-size: 14px; font-weight: 500; min-height: 40px; }
+.chip[aria-pressed="true"] { background: var(--break-soft); border-color: var(--break); color: var(--break); font-weight: 700; }
+.chip:active { transform: scale(.96); }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); padding-top: 12px; }
+.stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stat + .stat { border-left: 1px solid var(--line); padding-left: 12px; }
+.stat .k { font-size: 12px; color: var(--muted); letter-spacing: 0.06em; }
+.stat .v { font-size: 20px; font-weight: 600; }
+
+.log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.log li { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; padding-block: 8px; border-bottom: 1px dashed var(--line); }
+.log li:last-child { border-bottom: 0; }
+.log .t { font-size: 15px; }
+.tag { justify-self: start; font-size: 13px; font-weight: 700; padding: 1px 10px; border-radius: 6px; border: 1.5px solid currentColor; }
+.tag.in { color: var(--punch); } .tag.out { color: var(--off); } .tag.bs, .tag.be { color: var(--break); }
+.empty { color: var(--muted); font-size: 14px; margin: 0; }
+
+/* Month */
+.monthnav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.monthnav h1 { font-size: 20px; font-weight: 700; }
+.navbtn { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); font-size: 20px; line-height: 1; }
+.summary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 12px; }
+.summary .k { font-size: 12px; color: var(--muted); letter-spacing: 0.06em; }
+.summary .v { font-size: 22px; font-weight: 600; line-height: 1.25; }
+.summary .v.warn { color: var(--off); }
+.summary .wide { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 12px; }
+.note { font-size: 12px; color: var(--muted); margin: 0; }
+
+.bars { position: relative; height: 84px; display: grid; gap: 2px; align-items: end; border-bottom: 1px solid var(--line); }
+.bars .b { background: var(--punch); border-radius: 2px 2px 0 0; min-height: 0; }
+.bars .b.over { background: linear-gradient(to top, var(--punch) var(--split), var(--off) var(--split)); }
+.bars .b.none { background: transparent; }
+.bars .std { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--muted); pointer-events: none; }
+.bars .std span { position: absolute; right: 0; top: -17px; font-size: 10px; color: var(--muted); background: var(--card); padding-left: 4px; }
+.barlabels { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+
+.days { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.day { display: grid; grid-template-columns: 48px 1fr auto; gap: 12px; align-items: center; padding: 10px 4px; border-bottom: 1px solid var(--line); width: 100%; background: none; border-left: 0; border-right: 0; border-top: 0; text-align: left; }
+.days li:last-child .day { border-bottom: 0; }
+.day:active { background: var(--bg); }
+.day .d { display: flex; flex-direction: column; line-height: 1.2; }
+.day .d b { font-size: 18px; font-family: var(--f-num); }
+.day .d span { font-size: 11px; color: var(--muted); }
+.day .d.sun span { color: var(--off); } .day .d.sat span { color: var(--punch); }
+.day .mid { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.day .times { font-size: 14px; }
+.day .sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.day .w { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.day .w b { font-size: 16px; font-family: var(--f-num); }
+.pill { font-size: 11px; font-weight: 700; padding: 0 7px; border-radius: 999px; background: var(--off-soft); color: var(--off); }
+.pill.live { background: var(--punch-soft); color: var(--punch); }
+.addrow { display: flex; justify-content: flex-end; }
+
+/* Settings */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-size: 13px; font-weight: 500; }
+.field input, .field select { border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 10px 12px; font-size: 16px; width: 100%; min-width: 0; }
+.field .hint { font-size: 12px; color: var(--muted); }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.row2 > * { min-width: 0; }
+
+/* Tab bar */
+nav.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  background: var(--card); border-top: 1px solid var(--line);
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  padding-left: max(8px, env(safe-area-inset-left, 0px));
+  padding-right: max(8px, env(safe-area-inset-right, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+nav.tabs button { background: none; border: 0; padding: 10px 4px 12px; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; color: var(--muted); }
+nav.tabs button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+nav.tabs button[aria-selected="true"] { color: var(--punch); font-weight: 700; }
+
+/* Sheet */
+.scrim { position: fixed; inset: 0; z-index: 30; background: rgb(0 0 0 / .4); display: flex; align-items: flex-end; justify-content: center; }
+.sheet {
+  background: var(--card); width: 100%; max-width: 520px; border-radius: 18px 18px 0 0;
+  padding-top: 18px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; gap: 14px; max-height: 92%; overflow-y: auto;
+}
+.sheet h2 { font-size: 17px; color: var(--ink); letter-spacing: 0; }
+.sheet .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn-main { flex: 1; border: 0; border-radius: 12px; padding: 13px; font-weight: 700; background: var(--punch); color: var(--punch-ink); }
+.btn-del { border: 1px solid var(--off); color: var(--off); background: transparent; border-radius: 12px; padding: 13px 16px; font-weight: 700; }
+.btn-del.armed { background: var(--off); color: var(--card); }
+.err { color: var(--off); font-size: 13px; margin: 0; }
+
+.toast { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 999px; font-size: 14px; z-index: 40; max-width: calc(100% - 32px); }
+@media (prefers-reduced-motion: reduce) { .st-work::before { animation: none; } .btn-punch { transition: none; } }
+</style>
+
+</head>
+<body>
+<main id="app" aria-live="polite">
+  <section class="card"><p class="empty">読み込み中…</p></section>
+</main>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" id="tab-today" data-tab="today" aria-selected="true">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>打刻</button>
+  <button role="tab" id="tab-month" data-tab="month" aria-selected="false">
+    <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>月次</button>
+  <button role="tab" id="tab-settings" data-tab="settings" aria-selected="false">
+    <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>設定</button>
+</nav>
+
+<script>
+(() => {
+const WD = ['日','月','火','水','木','金','土'];
+const BRK_OPTS = [0, 30, 45, 60, 90, 120];
+const SHEET_BRK = [0, 15, 30, 45, 60, 75, 90, 120, 150, 180];
+const brkLabel = m => m % 60 === 0 && m ? `${m / 60}時間` : m > 60 ? `${Math.floor(m / 60)}時間${m % 60}分` : `${m}分`;
+const pad = n => String(n).padStart(2, '0');
+const dkey = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const ymKey = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}`;
+const parseKey = k => { const [y,m,d] = k.split('-').map(Number); return new Date(y, m-1, d || 1); };
+const hm = ms => { if (ms == null) return '--:--'; const d = new Date(ms); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+const dur = min => { min = Math.max(0, Math.round(min || 0)); return Math.floor(min/60) + ':' + pad(min % 60); };
+const yen = n => '¥' + Math.round(n).toLocaleString('ja-JP');
+const clone = o => JSON.parse(JSON.stringify(o || null));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const state = {
+  ready: false, mode: 'local', tab: 'today',
+  months: {}, settings: { std: 8, wage: 0, brk: 60 },
+  viewYM: ymKey(new Date()), sheet: null,
+};
+try { const t = localStorage.getItem('kintai.tab'); if (t) state.tab = t; } catch {}
+
+/* ---------- storage ---------- */
+function localStore() {
+  const listeners = {};
+  const read = k => { try { return JSON.parse(localStorage.getItem('kintai.' + k)); } catch { return null; } };
+  const write = (k, v) => { try { localStorage.setItem('kintai.' + k, JSON.stringify(v)); } catch {} };
+  return {
+    subMonth(ym, cb) { cb(read('m-' + ym)); return () => {}; },
+    saveMonth(ym, data) { write('m-' + ym, data); return Promise.resolve(); },
+    subSettings(cb) { cb(read('settings')); return () => {}; },
+    saveSettings(d) { write('settings', d); return Promise.resolve(); },
+  };
+}
+function dbStore(db, uid) {
+  const base = 'data/users/' + uid;
+  const chains = {};
+  const queue = (k, fn) => (chains[k] = (chains[k] || Promise.resolve()).then(fn, fn));
+  const fail = e => toast(e && e.code === 'quota_exceeded' ? '保存容量の上限に達しました' : '保存できませんでした。通信状態を確認してください');
+  const writeFail = e => {
+    if (e && (e.code === 'invalid_argument' || e.code === 'not_granted')) switchToLocal();
+    else fail(e);
+  };
+  return {
+    subMonth(ym, cb) { return db.doc(base + '/m-' + ym).onSnapshot(s => cb(s.exists ? s.data() : null), fail); },
+    saveMonth(ym, data) { return queue(ym, () => db.doc(base + '/m-' + ym).set(data)).catch(writeFail); },
+    subSettings(cb) { return db.doc(base + '/settings').onSnapshot(s => cb(s.exists ? s.data() : null), fail); },
+    saveSettings(d) { return queue('settings', () => db.doc(base + '/settings').set(d)).catch(writeFail); },
+  };
+}
+let store = null;
+const subs = {};
+// The account turned out to be read-only: keep everything typed so far on this device from now on.
+function switchToLocal() {
+  if (state.mode === 'local') return;
+  for (const k of Object.keys(subs)) { try { subs[k](); } catch {} delete subs[k]; }
+  const local = localStore();
+  store = local; state.mode = 'local';
+  for (const [ym, m] of Object.entries(state.months)) if (m && Object.keys(m.days || {}).length) local.saveMonth(ym, m);
+  local.saveSettings(state.settings);
+  toast('この端末に保存するよう切り替えました');
+  render();
+}
+function ensureMonth(ym) {
+  if (subs[ym] || !store) return;
+  subs[ym] = store.subMonth(ym, data => {
+    state.months[ym] = data && data.days ? clone(data) : { days: {} };
+    render();
+  });
+}
+async function init() {
+  let chosen = null;
+  try {
+    if (window.claude && typeof window.claude.use === 'function') {
+      const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+      const uid = user ? await user.id() : null;
+      let canWrite = null;
+      try { canWrite = user && typeof user.can === 'function' ? await user.can('data.write') : null; } catch {}
+      // false = view-only / public-link visitor: keep records on this device instead
+      if (db && uid && canWrite !== false) { chosen = dbStore(db, uid); state.mode = 'cloud'; }
+    }
+  } catch {}
+  store = chosen || localStore();
+  store.subSettings(s => { if (s) state.settings = { std: 8, wage: 0, brk: 60, ...s }; render(); });
+  const now = new Date();
+  ensureMonth(ymKey(now));
+  ensureMonth(ymKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)));
+  ensureMonth(state.viewYM);
+  state.ready = true;
+  render();
+}
+
+/* ---------- records ---------- */
+const getRec = key => state.months[key.slice(0,7)]?.days?.[key] || null;
+function setRec(key, rec) {
+  const ym = key.slice(0,7);
+  const m = clone(state.months[ym]) || { days: {} };
+  if (rec) m.days[key] = rec; else delete m.days[key];
+  state.months[ym] = m;
+  store.saveMonth(ym, m);
+  render();
+}
+function current() {
+  const now = new Date();
+  const y = dkey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+  const ry = getRec(y);
+  if (ry && ry.in && !ry.out) return { key: y, rec: ry };
+  const t = dkey(now);
+  return { key: t, rec: getRec(t) };
+}
+function status(rec) {
+  if (!rec || !rec.in) return 'before';
+  if (rec.out) return 'done';
+  const b = rec.breaks || [];
+  return b.length && b[b.length-1].e == null ? 'break' : 'work';
+}
+function subtract(segs, s, e) {
+  return segs.flatMap(([a,b]) => (e <= a || s >= b) ? [[a,b]] : [[a, Math.min(s,b)], [Math.max(e,a), b]].filter(([x,y]) => y > x));
+}
+function nightMs(a, b) {
+  let tot = 0;
+  const d = new Date(a); d.setHours(0,0,0,0); d.setDate(d.getDate() - 1);
+  while (d.getTime() < b) {
+    const ws = new Date(d); ws.setHours(22, 0, 0, 0);
+    const we = new Date(d); we.setDate(we.getDate() + 1); we.setHours(5, 0, 0, 0);
+    tot += Math.max(0, Math.min(b, we.getTime()) - Math.max(a, ws.getTime()));
+    d.setDate(d.getDate() + 1);
+  }
+  return tot;
+}
+function calc(rec, now = Date.now()) {
+  if (!rec || !rec.in) return null;
+  const end = rec.out ?? now;
+  const manual = typeof rec.breakMin === 'number';
+  const brkMs = manual ? rec.breakMin * 60000 : (rec.breaks || []).reduce((a, b) => a + Math.max(0, (b.e ?? now) - b.s), 0);
+  const work = Math.max(0, end - rec.in - brkMs) / 60000;
+  let segs = [[rec.in, end]];
+  if (!manual) for (const b of rec.breaks || []) segs = subtract(segs, b.s, b.e ?? now);
+  let night = segs.reduce((a, [x,y]) => a + nightMs(x, y), 0) / 60000;
+  night = Math.min(night, work);
+  const ot = Math.max(0, work - state.settings.std * 60);
+  return { work, brk: brkMs / 60000, night, ot };
+}
+
+/* ---------- punch actions ---------- */
+function punch(kind) {
+  const now = Date.now();
+  const { key, rec: r0 } = current();
+  let rec = clone(r0);
+  if (kind === 'in') {
+    const def = Number(state.settings.brk ?? 60);
+    setRec(dkey(new Date()), { in: now, out: null, breaks: [], breakMin: def });
+    toast('出勤 ' + hm(now)); return;
+  }
+  if (!rec) return;
+  if (kind.startsWith('brk:')) {
+    const min = Number(kind.slice(4));
+    if (typeof rec.breakMin === 'number' && rec.breakMin === min) return;
+    rec.breakMin = min; rec.breaks = [];
+    setRec(key, rec); toast(min ? `休憩を${min}分にしました` : '休憩なしにしました'); return;
+  }
+  rec.breaks = rec.breaks || [];
+  const last = rec.breaks[rec.breaks.length - 1];
+  if (kind === 'bs') { rec.breaks.push({ s: now, e: null }); toast('休憩開始 ' + hm(now)); }
+  if (kind === 'be' && last && last.e == null) { last.e = now; toast('休憩終了 ' + hm(now)); }
+  if (kind === 'out') { if (last && last.e == null) last.e = now; rec.out = now; toast('退勤 ' + hm(now) + '　おつかれさまでした'); }
+  if (kind === 'undo') { rec.out = null; toast('退勤を取り消しました'); }
+  setRec(key, rec);
+}
+
+/* ---------- views ---------- */
+function viewToday() {
+  const now = new Date();
+  const { key, rec } = current();
+  const st = status(rec);
+  const c = calc(rec);
+  const labels = { before: '勤務前', work: '勤務中', break: '休憩中', done: '退勤済み' };
+  let actions;
+  if (st === 'before') actions = `<div class="actions"><button class="btn-punch btn-in" data-act="in">出勤<small>タップで打刻</small></button></div>`;
+  else if (st === 'work') actions = `<div class="actions"><button class="btn-punch btn-out" data-act="out">退勤<small>タップで打刻</small></button></div>`;
+  else if (st === 'break') actions = `<div class="actions two"><button class="btn-punch btn-break" data-act="be">休憩終了</button><button class="btn-punch btn-out" data-act="out">退勤<small>休憩も終了</small></button></div>`;
+  else actions = `<div class="actions"><button class="btn-ghost" data-act="undo">退勤を取り消す</button></div>`;
+
+  // break length picker (shown once clocked in)
+  let picker = '';
+  if (st !== 'before') {
+    const curMin = c ? Math.round(c.brk) : 0;
+    const manual = typeof rec.breakMin === 'number';
+    const opts = BRK_OPTS.includes(curMin) || !manual ? BRK_OPTS : [...BRK_OPTS, curMin].sort((a, b) => a - b);
+    picker = `<div class="brkpick">
+      <span class="k">休憩時間を選択</span>
+      <div class="chips" role="group" aria-label="休憩時間">
+        ${opts.map(m => `<button class="chip" data-act="brk:${m}" aria-pressed="${manual && m === curMin}">${m ? brkLabel(m) : 'なし'}</button>`).join('')}
+        <button class="chip" data-edit="${key}">その他</button>
+      </div>
+    </div>`;
+  }
+
+  const ev = [];
+  if (rec && rec.in) {
+    ev.push(['in', '出勤', rec.in]);
+    for (const b of rec.breaks || []) { ev.push(['bs', '休憩開始', b.s]); if (b.e) ev.push(['be', '休憩終了', b.e]); }
+    if (rec.out) ev.push(['out', '退勤', rec.out]);
+  }
+  const night = key !== dkey(now) ? `<p class="note">前日 ${parseKey(key).getDate()}日 からの勤務を継続中です</p>` : '';
+
+  // this week (Mon start)
+  const mon = new Date(now); mon.setHours(0,0,0,0); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
+  let week = 0, wdays = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(mon); d.setDate(mon.getDate() + i);
+    const cc = calc(getRec(dkey(d))); if (cc) { week += cc.work; wdays++; }
+  }
+
+  return `
+  <section class="card">
+    <div class="topline">
+      <span class="date">${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日（${WD[now.getDay()]}）</span>
+      <span class="status st-${st}">${labels[st]}</span>
+    </div>
+    <div class="clockface"><div class="clock num" id="clock">${pad(now.getHours())}:${pad(now.getMinutes())}<span class="sec">${pad(now.getSeconds())}</span></div></div>
+    ${night}
+    ${actions}
+    ${picker}
+    <div class="stats">
+      <div class="stat"><span class="k">出勤</span><span class="v num">${hm(rec?.in)}</span></div>
+      <div class="stat"><span class="k">休憩</span><span class="v num" id="liveBrk">${c ? dur(c.brk) : '0:00'}</span></div>
+      <div class="stat"><span class="k">実働</span><span class="v num" id="liveWork">${c ? dur(c.work) : '0:00'}</span></div>
+    </div>
+  </section>
+  <section class="card">
+    <h2>今日の打刻</h2>
+    ${ev.length ? `<ol class="log">${ev.map(([k,l,t]) => `<li><span class="t num">${hm(t)}</span><span class="tag ${k}">${l}</span></li>`).join('')}</ol>`
+      : `<p class="empty">まだ打刻がありません。出勤ボタンを押すと記録が始まります。</p>`}
+  </section>
+  <section class="card">
+    <div class="topline"><h2>今週の実働（月曜〜）</h2><span class="mode">${wdays}日</span></div>
+    <div class="clock num" style="font-size:32px">${dur(week)}</div>
+  </section>
+  ${state.mode === 'local' ? '<p class="note">記録はこの端末のブラウザに保存されます。機種変更の前などは「設定」からCSVで書き出してください。</p>' : ''}`;
+}
+
+function monthData(ym) {
+  const base = parseKey(ym);
+  const n = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+  const days = state.months[ym]?.days || {};
+  const rows = []; let tot = { work: 0, ot: 0, night: 0, days: 0, pay: 0 };
+  const w = Number(state.settings.wage) || 0;
+  for (let i = 1; i <= n; i++) {
+    const key = `${ym}-${pad(i)}`;
+    const rec = days[key]; const c = calc(rec);
+    if (c) {
+      tot.work += c.work; tot.ot += c.ot; tot.night += c.night; tot.days++;
+      tot.pay += w * (c.work + 0.25 * c.ot + 0.25 * c.night) / 60;
+    }
+    rows.push({ key, d: new Date(base.getFullYear(), base.getMonth(), i), rec, c });
+  }
+  return { rows, tot, n };
+}
+
+function viewMonth() {
+  const ym = state.viewYM; ensureMonth(ym);
+  const loaded = !!state.months[ym];
+  const { rows, tot, n } = monthData(ym);
+  const b = parseKey(ym);
+  const std = state.settings.std * 60;
+  const maxMin = Math.max(std * 1.5, ...rows.map(r => r.c ? r.c.work : 0));
+  const stdPct = std / maxMin * 100;
+  const bars = rows.map(r => {
+    if (!r.c) return `<div class="b none"></div>`;
+    const h = r.c.work / maxMin * 100;
+    if (r.c.ot > 0) return `<div class="b over" style="height:${h}%;--split:${(std / r.c.work * 100).toFixed(1)}%" title="${r.d.getDate()}日 ${dur(r.c.work)}"></div>`;
+    return `<div class="b" style="height:${h}%" title="${r.d.getDate()}日 ${dur(r.c.work)}"></div>`;
+  }).join('');
+  const worked = rows.filter(r => r.rec && r.rec.in);
+  const list = worked.length ? worked.map(r => {
+    const wd = r.d.getDay();
+    const live = !r.rec.out;
+    const brk = r.c ? dur(r.c.brk) : '0:00';
+    return `<li><button class="day" data-edit="${r.key}">
+      <span class="d ${wd===0?'sun':wd===6?'sat':''}"><b>${r.d.getDate()}</b><span>${WD[wd]}曜</span></span>
+      <span class="mid"><span class="times num">${hm(r.rec.in)} – ${live ? '勤務中' : hm(r.rec.out)}</span>
+        <span class="sub">休憩 ${brk}${r.c && r.c.night >= 1 ? '・深夜 ' + dur(r.c.night) : ''}${r.rec.note ? '・' + esc(r.rec.note) : ''}</span></span>
+      <span class="w"><b>${r.c ? dur(r.c.work) : '–'}</b>${live ? '<span class="pill live">勤務中</span>' : r.c && r.c.ot >= 1 ? `<span class="pill">残業 ${dur(r.c.ot)}</span>` : ''}</span>
+    </button></li>`;
+  }).join('') : `<li><p class="empty">${loaded ? 'この月の記録はまだありません。打刻するか、「記録を追加」から入力できます。' : '読み込み中…'}</p></li>`;
+
+  const w = Number(state.settings.wage) || 0;
+  return `
+  <div class="monthnav">
+    <button class="navbtn" data-month="-1" aria-label="前の月">‹</button>
+    <h1>${b.getFullYear()}年${b.getMonth()+1}月</h1>
+    <button class="navbtn" data-month="1" aria-label="次の月">›</button>
+  </div>
+  <section class="card">
+    <div class="summary">
+      <div><div class="k">出勤日数</div><div class="v num">${tot.days}<small style="font-size:13px"> 日</small></div></div>
+      <div><div class="k">総実働</div><div class="v num">${dur(tot.work)}</div></div>
+      <div><div class="k">残業（所定${state.settings.std}h超）</div><div class="v num ${tot.ot >= 45*60 ? 'warn' : ''}">${dur(tot.ot)}</div></div>
+      <div><div class="k">深夜（22–5時）</div><div class="v num">${dur(tot.night)}</div></div>
+      ${w ? `<div class="wide"><div class="k">概算給与（時給${yen(w)}・割増25%）</div><div class="v num">${yen(tot.pay)}</div></div>` : ''}
+    </div>
+    ${tot.ot >= 45*60 ? '<p class="note" style="color:var(--off)">月45時間の残業上限（36協定の原則）に達しています。</p>' : ''}
+    <div>
+      <div class="bars" style="grid-template-columns:repeat(${n},1fr)" aria-label="日別の実働時間">
+        ${bars}
+        <div class="std" style="bottom:${stdPct}%"><span>${state.settings.std}h</span></div>
+      </div>
+      <div class="barlabels num"><span>1</span><span>${Math.ceil(n/2)}</span><span>${n}</span></div>
+    </div>
+  </section>
+  <section class="card">
+    <div class="topline"><h2>日別の記録</h2><button class="btn-ghost" data-add="1">＋ 記録を追加</button></div>
+    <ul class="days">${list}</ul>
+  </section>`;
+}
+
+function viewSettings() {
+  const s = state.settings;
+  return `
+  <section class="card">
+    <h2>勤務条件</h2>
+    <div class="row2">
+      <div class="field"><label for="set-std">所定労働時間（1日）</label>
+        <input id="set-std" type="number" inputmode="decimal" min="1" max="24" step="0.5" value="${s.std}">
+        <span class="hint">これを超えた分を残業として計算</span></div>
+      <div class="field"><label for="set-wage">時給（円）</label>
+        <input id="set-wage" type="number" inputmode="numeric" min="0" step="10" value="${s.wage || ''}" placeholder="未設定">
+        <span class="hint">入れると月次に概算給与を表示</span></div>
+    </div>
+    <div class="field"><label for="set-brk">いつもの休憩時間</label>
+      <select id="set-brk">${SHEET_BRK.map(m => `<option value="${m}" ${m === Number(s.brk ?? 60) ? 'selected' : ''}>${m ? brkLabel(m) : 'なし'}</option>`).join('')}</select>
+      <span class="hint">出勤したときに自動で入ります。その日だけ打刻画面で変えられます</span></div>
+  </section>
+  <section class="card">
+    <h2>書き出し</h2>
+    <p class="note">表示中の月（${parseKey(state.viewYM).getFullYear()}年${parseKey(state.viewYM).getMonth()+1}月）の記録をCSVにします。月は「月次」タブで切り替えられます。</p>
+    <div class="btns" style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn-ghost" id="csv-save">CSVを保存</button>
+      <button class="btn-ghost" id="csv-copy">CSVをコピー</button>
+    </div>
+  </section>
+  <section class="card">
+    <h2>データの保存先</h2>
+    <p class="note">${state.mode === 'cloud'
+      ? 'あなたのアカウントに保存されます。スマホとPCのどちらで開いても同じ記録が見られ、他の人には見えません。'
+      : 'この端末のブラウザにだけ保存されています。他の端末とは同期されず、ブラウザのデータを消したりシークレットモードで開いたりすると記録は見えません。定期的にCSVで書き出してください。'}</p>
+  </section>`;
+}
+
+function csvText() {
+  const { rows } = monthData(state.viewYM);
+  const lines = [['日付','曜日','出勤','退勤','休憩(分)','実働(分)','残業(分)','深夜(分)','メモ']];
+  for (const r of rows) if (r.rec && r.rec.in) {
+    const c = r.c;
+    lines.push([r.key, WD[r.d.getDay()], hm(r.rec.in), r.rec.out ? hm(r.rec.out) : '', Math.round(c.brk), Math.round(c.work), Math.round(c.ot), Math.round(c.night), r.rec.note || '']);
+  }
+  return '﻿' + lines.map(l => l.map(v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v).join(',')).join('\r\n');
+}
+
+/* ---------- edit sheet ---------- */
+function openSheet(key) {
+  const isNew = !key;
+  const k = key || dkey(new Date(Math.min(Date.now(), new Date(parseKey(state.viewYM).getFullYear(), parseKey(state.viewYM).getMonth() + 1, 0).getTime())));
+  const rec = getRec(k);
+  const c = calc(rec);
+  state.sheet = { key: isNew ? null : k, origBrk: c ? Math.round(c.brk) : Number(state.settings.brk ?? 60), armed: false };
+  const el = document.createElement('div');
+  el.className = 'scrim'; el.id = 'scrim';
+  el.innerHTML = `<form class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-h">
+    <h2 id="sheet-h">${isNew ? '記録を追加' : '記録を編集'}</h2>
+    <div class="field"><label for="ed-date">日付（出勤した日）</label><input id="ed-date" type="date" value="${k}" required></div>
+    <div class="row2">
+      <div class="field"><label for="ed-in">出勤</label><input id="ed-in" type="time" value="${rec?.in ? hm(rec.in) : '09:00'}" required></div>
+      <div class="field"><label for="ed-out">退勤</label><input id="ed-out" type="time" value="${rec?.out ? hm(rec.out) : (rec ? '' : '18:00')}"><span class="hint">空欄＝勤務中。日付をまたぐ場合はそのまま入力</span></div>
+    </div>
+    <div class="field"><label for="ed-brk">休憩時間</label>
+      <select id="ed-brk">${[...new Set([...SHEET_BRK, state.sheet.origBrk])].sort((a, b) => a - b)
+        .map(m => `<option value="${m}" ${m === state.sheet.origBrk ? 'selected' : ''}>${m ? brkLabel(m) : 'なし'}</option>`).join('')}</select></div>
+    <div class="field"><label for="ed-note">メモ</label><input id="ed-note" type="text" maxlength="60" value="${esc(rec?.note || '')}" placeholder="例：在宅、客先"></div>
+    <p class="err" id="ed-err" hidden></p>
+    <div class="btns">
+      ${isNew ? '' : '<button type="button" class="btn-del" id="ed-del">削除</button>'}
+      <button type="button" class="btn-ghost" id="ed-cancel">閉じる</button>
+      <button type="submit" class="btn-main">保存</button>
+    </div>
+  </form>`;
+  document.body.appendChild(el);
+  el.addEventListener('click', e => { if (e.target === el) closeSheet(); });
+  el.querySelector('#ed-cancel').onclick = closeSheet;
+  const del = el.querySelector('#ed-del');
+  if (del) del.onclick = () => {
+    if (!state.sheet.armed) { state.sheet.armed = true; del.classList.add('armed'); del.textContent = 'もう一度押して削除'; return; }
+    setRec(state.sheet.key, null); closeSheet(); toast('記録を削除しました');
+  };
+  el.querySelector('#sheet').onsubmit = e => { e.preventDefault(); saveSheet(); };
+  setTimeout(() => el.querySelector('#ed-in').focus(), 50);
+}
+function closeSheet() { document.getElementById('scrim')?.remove(); state.sheet = null; }
+function saveSheet() {
+  const v = id => document.getElementById(id).value;
+  const err = document.getElementById('ed-err');
+  const date = v('ed-date'), tin = v('ed-in'), tout = v('ed-out');
+  if (!date || !tin) { err.textContent = '日付と出勤時刻を入力してください'; err.hidden = false; return; }
+  const day = parseKey(date);
+  const at = t => { const [h, m] = t.split(':').map(Number); const d = new Date(day); d.setHours(h, m, 0, 0); return d.getTime(); };
+  const inMs = at(tin);
+  let outMs = tout ? at(tout) : null;
+  if (outMs != null && outMs <= inMs) outMs += 86400000;
+  const brk = Math.max(0, Number(v('ed-brk')) || 0);
+  if (outMs != null && brk * 60000 >= outMs - inMs) { err.textContent = '休憩が勤務時間より長くなっています'; err.hidden = false; return; }
+  const oldKey = state.sheet.key;
+  const old = oldKey ? clone(getRec(oldKey)) : null;
+  const rec = { in: inMs, out: outMs, breaks: [] };
+  const sameTimes = old && old.in === inMs && old.out === outMs;
+  if (old && sameTimes && brk === state.sheet.origBrk && typeof old.breakMin !== 'number') rec.breaks = old.breaks || [];
+  else rec.breakMin = brk;
+  const note = v('ed-note').trim(); if (note) rec.note = note;
+  if (oldKey && oldKey !== date) setRec(oldKey, null);
+  ensureMonth(date.slice(0, 7));
+  setRec(date, rec);
+  closeSheet(); toast('保存しました');
+}
+
+/* ---------- render ---------- */
+const app = document.getElementById('app');
+function render() {
+  if (!state.ready) return;
+  document.querySelectorAll('nav.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === state.tab)));
+  const active = document.activeElement && document.activeElement.id;
+  if (state.tab === 'settings' && active && active.startsWith('set-')) return; // don't clobber typing
+  app.innerHTML = state.tab === 'today' ? viewToday() : state.tab === 'month' ? viewMonth() : viewSettings();
+}
+
+app.addEventListener('click', async e => {
+  const t = e.target.closest('button'); if (!t) return;
+  if (t.dataset.act) punch(t.dataset.act);
+  else if (t.dataset.month) { const b = parseKey(state.viewYM); state.viewYM = ymKey(new Date(b.getFullYear(), b.getMonth() + Number(t.dataset.month), 1)); render(); }
+  else if (t.dataset.edit) openSheet(t.dataset.edit);
+  else if (t.dataset.add) openSheet(null);
+  else if (t.id === 'csv-copy') {
+    const txt = csvText().slice(1);
+    try { await navigator.clipboard.writeText(txt); toast('CSVをコピーしました'); }
+    catch { toast('コピーできませんでした。「CSVを保存」をお試しください'); }
+  } else if (t.id === 'csv-save') {
+    try {
+      const url = URL.createObjectURL(new Blob([csvText()], { type: 'text/csv' }));
+      const a = document.createElement('a'); a.href = url; a.download = `勤怠_${state.viewYM}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000); toast('CSVを保存しました');
+    } catch { toast('保存できませんでした。「CSVをコピー」を使ってください'); }
+  }
+});
+app.addEventListener('change', e => {
+  if (['set-std', 'set-wage', 'set-brk'].includes(e.target.id)) {
+    const std = Math.min(24, Math.max(1, Number(document.getElementById('set-std').value) || 8));
+    const wage = Math.max(0, Number(document.getElementById('set-wage').value) || 0);
+    const brk = Number(document.getElementById('set-brk').value);
+    if (std === state.settings.std && wage === state.settings.wage && brk === Number(state.settings.brk ?? 60)) return;
+    state.settings = { ...state.settings, std, wage, brk };
+    store.saveSettings(state.settings); toast('設定を保存しました');
+  }
+});
+document.querySelector('nav.tabs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.tab = b.dataset.tab; try { localStorage.setItem('kintai.tab', state.tab); } catch {}
+  document.activeElement?.blur?.(); render(); window.scrollTo(0, 0);
+});
+
+let toastTimer;
+function toast(msg) {
+  let el = document.getElementById('toast');
+  if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+  el.textContent = msg; el.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 2200);
+}
+
+let lastDay = dkey(new Date());
+setInterval(() => {
+  if (!state.ready || state.tab !== 'today') return;
+  const now = new Date();
+  if (dkey(now) !== lastDay) { lastDay = dkey(now); ensureMonth(ymKey(now)); render(); return; }
+  const clock = document.getElementById('clock');
+  if (clock) clock.innerHTML = `${pad(now.getHours())}:${pad(now.getMinutes())}<span class="sec">${pad(now.getSeconds())}</span>`;
+  const c = calc(current().rec);
+  if (c) {
+    const w = document.getElementById('liveWork'), b = document.getElementById('liveBrk');
+    if (w) w.textContent = dur(c.work); if (b) b.textContent = dur(c.brk);
+  }
+}, 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+
+init();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+
+</body>
+</html>

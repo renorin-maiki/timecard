@@ -107,6 +107,11 @@ button { cursor: pointer; }
 .btn-ghost { background: transparent; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 14px; color: var(--muted); }
 .btn-ghost:active { background: var(--line); }
 
+.late { display: flex; flex-direction: column; gap: 6px; }
+.late label { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; }
+.lateRow { display: flex; gap: 8px; }
+.lateRow select { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 9px 10px; font-size: 16px; font-family: var(--f-num); }
+.btn-late { white-space: nowrap; color: var(--ink); font-weight: 500; }
 .brkpick { display: flex; flex-direction: column; gap: 8px; }
 .brkpick .k { font-size: 12px; color: var(--muted); letter-spacing: 0.06em; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -235,6 +240,19 @@ const dur = min => { min = Math.max(0, Math.round(min || 0)); return Math.floor(
 const yen = n => '¥' + Math.round(n).toLocaleString('ja-JP');
 const clone = o => JSON.parse(JSON.stringify(o || null));
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const SLOTS = Array.from({ length: 96 }, (_, i) => pad(Math.floor(i / 4)) + ':' + pad(i % 4 * 15));
+function timeOptions(cur, emptyLabel) {
+  const list = !cur || SLOTS.includes(cur) ? SLOTS : [...SLOTS, cur].sort();
+  return (emptyLabel != null ? `<option value="" ${!cur ? 'selected' : ''}>${emptyLabel}</option>` : '')
+    + list.map(t => `<option value="${t}" ${t === cur ? 'selected' : ''}>${t}</option>`).join('');
+}
+// 15-minute slots from toMs (rounded down) back to fromMs, newest first
+function backSlots(fromMs, toMs, max = 64) {
+  const out = [];
+  const d = new Date(toMs); d.setSeconds(0, 0); d.setMinutes(Math.floor(d.getMinutes() / 15) * 15);
+  while (d.getTime() >= fromMs && out.length < max) { out.push(d.getTime()); d.setMinutes(d.getMinutes() - 15); }
+  return out;
+}
 
 const state = {
   ready: false, mode: 'local', tab: 'today',
@@ -419,6 +437,22 @@ function viewToday() {
     </div>`;
   }
 
+  // forgot to punch: pick the time in 15-minute steps
+  let late = '';
+  const lateRow = (slots, kind, label, fmt) => slots.length ? `<div class="late">
+      <label for="late-time">押し忘れたときは時刻を選んで打刻</label>
+      <div class="lateRow">
+        <select id="late-time">${slots.map(t => `<option value="${t}">${fmt(t)}</option>`).join('')}</select>
+        <button class="btn-ghost btn-late" data-late="${kind}">この時刻で${label}</button>
+      </div></div>` : '';
+  if (st === 'before') {
+    const start = new Date(now); start.setHours(0, 0, 0, 0);
+    late = lateRow(backSlots(start.getTime(), now.getTime()), 'in', '出勤', hm);
+  } else if (st === 'work' || st === 'break') {
+    const inDay = new Date(rec.in).getDate();
+    late = lateRow(backSlots(rec.in, now.getTime()), 'out', '退勤', t => (new Date(t).getDate() !== inDay ? '翌 ' : '') + hm(t));
+  }
+
   const ev = [];
   if (rec && rec.in) {
     ev.push(['in', '出勤', rec.in]);
@@ -444,6 +478,7 @@ function viewToday() {
     <div class="clockface"><div class="clock num" id="clock">${pad(now.getHours())}:${pad(now.getMinutes())}<span class="sec">${pad(now.getSeconds())}</span></div></div>
     ${night}
     ${actions}
+    ${late}
     ${picker}
     <div class="stats">
       <div class="stat"><span class="k">出勤</span><span class="v num">${hm(rec?.in)}</span></div>
@@ -452,7 +487,7 @@ function viewToday() {
     </div>
   </section>
   <section class="card">
-    <h2>今日の打刻</h2>
+    <div class="topline"><h2>今日の打刻</h2>${rec && rec.in ? `<button class="btn-ghost" data-edit="${key}">時刻を修正</button>` : ''}</div>
     ${ev.length ? `<ol class="log">${ev.map(([k,l,t]) => `<li><span class="t num">${hm(t)}</span><span class="tag ${k}">${l}</span></li>`).join('')}</ol>`
       : `<p class="empty">まだ打刻がありません。出勤ボタンを押すと記録が始まります。</p>`}
   </section>
@@ -594,8 +629,8 @@ function openSheet(key) {
     <h2 id="sheet-h">${isNew ? '記録を追加' : '記録を編集'}</h2>
     <div class="field"><label for="ed-date">日付（出勤した日）</label><input id="ed-date" type="date" value="${k}" required></div>
     <div class="row2">
-      <div class="field"><label for="ed-in">出勤</label><input id="ed-in" type="time" value="${rec?.in ? hm(rec.in) : '09:00'}" required></div>
-      <div class="field"><label for="ed-out">退勤</label><input id="ed-out" type="time" value="${rec?.out ? hm(rec.out) : (rec ? '' : '18:00')}"><span class="hint">空欄＝勤務中。日付をまたぐ場合はそのまま入力</span></div>
+      <div class="field"><label for="ed-in">出勤</label><select id="ed-in" required>${timeOptions(rec?.in ? hm(rec.in) : '09:00')}</select></div>
+      <div class="field"><label for="ed-out">退勤</label><select id="ed-out">${timeOptions(rec?.out ? hm(rec.out) : (rec ? '' : '18:00'), '勤務中（未退勤）')}</select><span class="hint">出勤より前の時刻は翌日の退勤として記録</span></div>
     </div>
     <div class="field"><label for="ed-brk">休憩時間</label>
       <select id="ed-brk">${[...new Set([...SHEET_BRK, state.sheet.origBrk])].sort((a, b) => a - b)
@@ -658,6 +693,21 @@ function render() {
 app.addEventListener('click', async e => {
   const t = e.target.closest('button'); if (!t) return;
   if (t.dataset.act) punch(t.dataset.act);
+  else if (t.dataset.late) {
+    const ms = Number(document.getElementById('late-time')?.value);
+    if (!ms) return;
+    if (t.dataset.late === 'in') {
+      setRec(dkey(new Date(ms)), { in: ms, out: null, breaks: [], breakMin: Number(state.settings.brk ?? 60) });
+      toast('出勤 ' + hm(ms) + ' を記録');
+    } else {
+      const { key, rec: r0 } = current(); const rec = clone(r0); if (!rec) return;
+      rec.breaks = rec.breaks || [];
+      const last = rec.breaks[rec.breaks.length - 1];
+      if (last && last.e == null) last.e = Math.max(last.s, ms);
+      rec.out = ms; setRec(key, rec);
+      toast('退勤 ' + hm(ms) + ' を記録');
+    }
+  }
   else if (t.dataset.month) { const b = parseKey(state.viewYM); state.viewYM = ymKey(new Date(b.getFullYear(), b.getMonth() + Number(t.dataset.month), 1)); render(); }
   else if (t.dataset.edit) openSheet(t.dataset.edit);
   else if (t.dataset.add) openSheet(null);
@@ -699,10 +749,13 @@ function toast(msg) {
 }
 
 let lastDay = dkey(new Date());
+let lastSlot = Math.floor(new Date().getMinutes() / 15);
 setInterval(() => {
   if (!state.ready || state.tab !== 'today') return;
   const now = new Date();
   if (dkey(now) !== lastDay) { lastDay = dkey(now); ensureMonth(ymKey(now)); render(); return; }
+  const slot = Math.floor(now.getMinutes() / 15);
+  if (slot !== lastSlot) { lastSlot = slot; if (document.activeElement?.id !== 'late-time') { render(); return; } }
   const clock = document.getElementById('clock');
   if (clock) clock.innerHTML = `${pad(now.getHours())}:${pad(now.getMinutes())}<span class="sec">${pad(now.getSeconds())}</span>`;
   const c = calc(current().rec);
